@@ -4,6 +4,7 @@
 #include <QMessageBox>
 #include <QFile>
 #include <QTextStream>
+#include <QCryptographicHash>
 #include <QMessageBox>
 
 
@@ -55,7 +56,8 @@ void CreateAcc::on_signup_clicked()
         QMessageBox::warning(this, "Error", "All fields are required");
         return;
     }
-    QFile file("C:/Users/USER/Downloads/Project (1)/Sign_up/users.txt");
+    // store local user data in the app folder; do NOT store plaintext passwords
+    QFile file("users.txt");
 
     //check my user's data files exist
     if (!file.open(QIODevice::Append | QIODevice::Text)) {
@@ -65,11 +67,13 @@ void CreateAcc::on_signup_clicked()
 
     // writing data in specific format:
     QTextStream out(&file);
+    // Hash the password before storing
+    QByteArray hash = QCryptographicHash::hash(password.toUtf8(), QCryptographicHash::Sha256).toHex();
     out << firstName << ";"
         << lastName  << ";"
         << role      << ";"
         << email     << ";"
-        << password  << "\n";
+        << hash.constData() << "\n";
 
     // free file
     file.close();

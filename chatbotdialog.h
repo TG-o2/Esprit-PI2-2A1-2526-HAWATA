@@ -27,7 +27,7 @@ class ChatbotDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit ChatbotDialog(QWidget *parent = nullptr);
+    explicit ChatbotDialog(QWidget *parent = nullptr, int currentUserId = -1, const QString &currentUserRole = QString());
     ~ChatbotDialog();
 
 protected:
@@ -59,10 +59,15 @@ private:
     QString queryUsers(const QString &input);
     QString queryCompanies(const QString &input);
     QString querySummary();
+    QString queryListTables();
+    QString dumpTable(const QString &tableName, int limit = 10);
+    QString actualTable(const QString &baseName) const;
 
     // Drag to move
     bool   m_dragging   = false;
     QPoint m_dragOffset;
+    int m_currentUserId = -1;
+    QString m_currentUserRole;
 };
 
 #endif // CHATBOTDIALOG_H

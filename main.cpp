@@ -71,11 +71,11 @@ int main(int argc, char *argv[])
     if (conn.createconnect()) {
         QMessageBox::information(nullptr, "Database Connection", "Database connection succeeded!");
     } else {
-        QMessageBox::critical(nullptr,
-                              "Database Connection",
-                              QString("Database connection failed!\n%1")
-                                  .arg(conn.lastError()));
-        return 1;
+        QMessageBox::warning(nullptr,
+                             "Database Connection",
+                             QString("Database connection failed, but the app will still open.\n\n%1\n\n"
+                                     "Check your Oracle client/ODBC driver setup before using database features.")
+                                 .arg(conn.lastError()));
     }
 
     MainWindow w;

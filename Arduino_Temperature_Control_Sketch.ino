@@ -24,6 +24,10 @@
 #define RELAYPIN 3        // Relay control pin (HIGH = fan ON, LOW = fan OFF)
 #define BAUD_RATE 9600    // Serial communication speed
 
+// Many relay modules are active-low: LOW energizes the relay, HIGH turns it off.
+// Keep this configurable so the sketch matches the actual hardware wiring.
+#define RELAY_ACTIVE_LOW true
+
 // ───────────────────────────────────────────────────────────────────
 // Constants
 // ───────────────────────────────────────────────────────────────────
@@ -37,6 +41,8 @@ DHT dht(DHTPIN, DHTTYPE);
 unsigned long lastTempReadTime = 0;
 bool fanState = false;  // false = OFF, true = ON
 String incomingCommand = "";
+
+void setFanState(bool state);
 
 // ───────────────────────────────────────────────────────────────────
 // Setup
@@ -54,8 +60,7 @@ void setup() {
   
   // Initialize relay pin
   pinMode(RELAYPIN, OUTPUT);
-  digitalWrite(RELAYPIN, LOW);  // Start with fan OFF
-  fanState = false;
+  setFanState(false);  // Start with fan OFF
   delay(100);
   Serial.println("SYSTEM: Relay initialized (Fan OFF)");
   Serial.println("SYSTEM: Ready to receive commands");
@@ -155,13 +160,9 @@ void processCommand(String command) {
 // Set Fan State
 // ───────────────────────────────────────────────────────────────────
 void setFanState(bool state) {
-  if (state) {
-    digitalWrite(RELAYPIN, HIGH);  // Turn fan ON
-    fanState = true;
-  } else {
-    digitalWrite(RELAYPIN, LOW);   // Turn fan OFF
-    fanState = false;
-  }
+  const bool relayOutputHigh = RELAY_ACTIVE_LOW ? !state : state;
+  digitalWrite(RELAYPIN, relayOutputHigh ? HIGH : LOW);
+  fanState = state;
 }
 
 /*

@@ -47,6 +47,10 @@ obj/
 # --- Other temporary or user-specific files ---
 Testing/Temporary/
 
+# Ignore local environment and user data
+.env
+users.txt
+
 # Ninja build system files
 .ninja_deps
 .ninja_log

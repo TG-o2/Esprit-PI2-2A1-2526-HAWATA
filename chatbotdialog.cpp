@@ -16,17 +16,201 @@
 #include <QMouseEvent>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QSqlRecord>
+#include <QRegularExpression>
 #include <QVariant>
 #include <QTimer>
 #include <QScrollBar>
 #include <QApplication>
 
+#include <QDate>
+#include <QDateTime>
+#include <cmath>
+#include <limits>
+
+namespace {
+struct NamedPoint {
+    const char *name;
+    double lat;
+    double lon;
+};
+
+static const NamedPoint kTunisiaSeaPoints[] = {
+    {"Tunis", 36.900000, 10.380000},
+    {"La Goulette", 36.819000, 10.305000},
+    {"La Marsa", 36.878000, 10.325000},
+    {"Sidi Bou Said", 36.870000, 10.345000},
+    {"Rades", 36.770000, 10.290000},
+    {"Bizerte", 37.315000, 9.930000},
+    {"Tabarka", 36.995000, 8.760000},
+    {"Kelibia", 36.865000, 11.120000},
+    {"Nabeul", 36.485000, 10.790000},
+    {"Hammamet", 36.340000, 10.590000},
+    {"Sousse", 35.925000, 10.700000},
+    {"Monastir", 35.790000, 10.850000},
+    {"Mahdia", 35.535000, 11.070000},
+    {"Sfax", 34.745000, 10.780000},
+    {"Kerkennah", 34.700000, 11.200000},
+    {"Gabes", 33.980000, 10.300000},
+    {"Djerba", 33.930000, 10.920000},
+    {"Houmt Souk", 33.880000, 10.860000},
+    {"Zarzis", 33.520000, 11.130000},
+    {"Esprit College", 36.845000, 10.190000},
+    {"Malles", 36.840000, 10.170000}
+};
+
+bool convertDdmmToDecimal(const QString &ddmm, double &decimalOut)
+{
+    QString normalized = ddmm.trimmed();
+    normalized.replace(',', '.');
+
+    bool ok = false;
+    const double value = normalized.toDouble(&ok);
+    if (!ok || value < 0) return false;
+
+    const int dotPos = normalized.indexOf('.');
+    const int minutesStart = (dotPos < 0) ? normalized.length() - 2 : dotPos - 2;
+    if (minutesStart <= 0) return false;
+
+    bool degOk = false;
+    bool minOk = false;
+    const int degrees = normalized.left(minutesStart).toInt(&degOk);
+    const double minutes = normalized.mid(minutesStart).toDouble(&minOk);
+    if (!degOk || !minOk || minutes < 0.0 || minutes >= 60.0) return false;
+
+    decimalOut = static_cast<double>(degrees) + (minutes / 60.0);
+    return true;
+}
+
+bool parseLocationToLatLon(const QString &location, double &lat, double &lon)
+{
+    const QString trimmed = location.trimmed();
+    if (trimmed.isEmpty()) return false;
+
+    const QRegularExpression pairPattern(R"((\d+\.?\d*)\s*[,\s]\s*(\d+\.?\d*))");
+    const QRegularExpressionMatch m = pairPattern.match(trimmed);
+    if (!m.hasMatch()) return false;
+
+    QString first = m.captured(1);
+    QString second = m.captured(2);
+    first.replace(',', '.');
+    second.replace(',', '.');
+
+    double latDdmm = 0.0;
+    double lonDdmm = 0.0;
+    if (convertDdmmToDecimal(first, latDdmm) && convertDdmmToDecimal(second, lonDdmm)) {
+        lat = latDdmm;
+        lon = lonDdmm;
+        return true;
+    }
+
+    bool ok1 = false;
+    bool ok2 = false;
+    const double v1 = first.toDouble(&ok1);
+    const double v2 = second.toDouble(&ok2);
+    if (!ok1 || !ok2) return false;
+
+    auto validLatLon = [](double a, double b) {
+        return a >= -90.0 && a <= 90.0 && b >= -180.0 && b <= 180.0;
+    };
+
+    if (validLatLon(v1, v2)) {
+        lat = v1;
+        lon = v2;
+        return true;
+    }
+
+    if (validLatLon(v2, v1)) {
+        lat = v2;
+        lon = v1;
+        return true;
+    }
+
+    return false;
+}
+
+QString resolveLocationName(const QString &rawLocation)
+{
+    const QString trimmed = rawLocation.trimmed();
+    if (trimmed.isEmpty()) return "Unknown area";
+
+    const bool containsLetter = trimmed.contains(QRegularExpression("[A-Za-z]"));
+    if (containsLetter) return trimmed;
+
+    double lat = 0.0;
+    double lon = 0.0;
+    if (!parseLocationToLatLon(trimmed, lat, lon)) return trimmed;
+
+    QString bestName = "Tunis";
+    double bestDistance = std::numeric_limits<double>::max();
+
+    for (const NamedPoint &p : kTunisiaSeaPoints) {
+        const double dLat = lat - p.lat;
+        const double dLon = lon - p.lon;
+        const double dist = (dLat * dLat) + (dLon * dLon);
+        if (dist < bestDistance) {
+            bestDistance = dist;
+            bestName = QString::fromLatin1(p.name);
+        }
+    }
+
+    return bestName;
+}
+
+QDate parseProductDateForChat(const QString &value)
+{
+    const QString trimmed = value.trimmed();
+    if (trimmed.isEmpty()) {
+        return {};
+    }
+
+    const QStringList dateFormats = {
+        "yyyy-MM-dd",
+        "yyyy-MM-ddThh:mm:ss",
+        "yyyy-MM-dd hh:mm:ss",
+        "yyyy-MM-ddTHH:mm:ss",
+        "yyyy-MM-dd HH:mm:ss",
+        "dd/MM/yyyy",
+        "dd-MM-yyyy"
+    };
+
+    for (const QString &format : dateFormats) {
+        QDateTime dt = QDateTime::fromString(trimmed, format);
+        if (dt.isValid()) return dt.date();
+
+        QDate d = QDate::fromString(trimmed, format);
+        if (d.isValid()) return d;
+    }
+
+    const QDateTime iso = QDateTime::fromString(trimmed, Qt::ISODate);
+    if (iso.isValid()) return iso.date();
+
+    return {};
+}
+
+double discountedPriceForChat(double originalPrice, const QString &purchaseDateText)
+{
+    const QDate purchaseDate = parseProductDateForChat(purchaseDateText);
+    if (!purchaseDate.isValid()) {
+        return originalPrice;
+    }
+
+    const int ageDays = purchaseDate.daysTo(QDate::currentDate());
+    if (ageDays >= 30) return originalPrice * 0.70;
+    if (ageDays >= 20) return originalPrice * 0.80;
+    if (ageDays >= 10) return originalPrice * 0.90;
+    return originalPrice;
+}
+}
+
 // ─────────────────────────────────────────────
 //  Constructor / Destructor
 // ─────────────────────────────────────────────
-ChatbotDialog::ChatbotDialog(QWidget *parent)
+ChatbotDialog::ChatbotDialog(QWidget *parent, int currentUserId, const QString &currentUserRole)
     : QDialog(parent)
     , ui(new Ui::chatbotdialog)
+    , m_currentUserId(currentUserId)
+    , m_currentUserRole(currentUserRole)
 {
     ui->setupUi(this);
 
@@ -118,11 +302,15 @@ void ChatbotDialog::callOllama(const QString &input)
 
     QJsonObject json;
     // Provide clear system/context and the user message
-    json["prompt"] =
+    QString prompt =
         "You are a helpful harbor assistant for a fishing port system.\n"
         "Answer concisely and use friendly emoji when helpful.\n"
-        "You have access to information about boats, docks, fish stock, users, and companies.\n\n"
-        "User: " + input + "\nAssistant:";
+        "You have access to information about boats, docks, fish stock, users, and companies.\n\n";
+    prompt += QString("Current session role: %1\n").arg(m_currentUserRole.isEmpty() ? "unknown" : m_currentUserRole);
+    prompt += QString("Current session user ID: %1\n\n").arg(m_currentUserId);
+    prompt += QString("User: %1\nAssistant:").arg(input);
+
+    json["prompt"] = prompt;
     json["stream"] = false;
     json["temperature"] = 0.2;
     json["max_tokens"] = 512;
@@ -284,10 +472,26 @@ void ChatbotDialog::onChip3Clicked() {
 // ─────────────────────────────────────────────
 QString ChatbotDialog::processQuery(const QString &input)
 {
+    auto hasWord = [&input](const QString &word) {
+        const QRegularExpression re(QString("\\b%1\\b").arg(QRegularExpression::escape(word)));
+        return re.match(input).hasMatch();
+    };
+
+    if (input.contains("who am i") || input.contains("what type of user") ||
+        input.contains("my role") || input.contains("what am i") ||
+        input.contains("am i")) {
+        if (!m_currentUserRole.trimmed().isEmpty()) {
+            return QString("You are logged in as %1 user #%2.")
+                .arg(m_currentUserRole, QString::number(m_currentUserId));
+        }
+
+        return "I don't have the current session role yet. Please log in again so I can identify your account.";
+    }
+
     // ── Greetings ────────────────────────────────────────
-    if (input.contains("hello") || input.contains("hi") ||
-        input.contains("hey")   || input.contains("salut") ||
-        input.contains("bonjour"))
+    if (hasWord("hello") || hasWord("hi") ||
+        hasWord("hey")   || hasWord("salut") ||
+        hasWord("bonjour"))
         return "Hello! 👋 How can I help you today?\n"
                "Ask me about stock, docks, boats, users, or companies.";
 
@@ -306,12 +510,34 @@ QString ChatbotDialog::processQuery(const QString &input)
         input.contains("dashboard") || input.contains("all"))
         return querySummary();
 
+    // ── List / Dump tables (admin) ─────────────────────────
+    if (input.contains("list tables") || input.contains("show tables") ||
+        (input.contains("tables") && input.contains("show"))) {
+        return queryListTables();
+    }
+
+    if (input.contains("dump table") || input.contains("show table") || input.contains("read table")) {
+        // simple extraction: take the token after "table"
+        QStringList parts = input.split(QRegularExpression("\\s+"));
+        int idx = parts.indexOf("table");
+        if (idx >= 0 && idx + 1 < parts.size()) {
+            QString tbl = parts[idx + 1];
+            // strip punctuation
+            tbl.remove(QRegularExpression("[^A-Za-z0-9_\.:]") );
+            if (!tbl.isEmpty()) return dumpTable(tbl, 12);
+        }
+        return "Usage: 'dump table <TABLE_NAME>' — e.g. 'dump table SMARTFISH.USERS'";
+    }
+
     // ── Stock / Products ─────────────────────────────────
     if (input.contains("stock")   || input.contains("fish")    ||
         input.contains("product") || input.contains("tuna")    ||
         input.contains("sardine") || input.contains("low")     ||
         input.contains("quantity")|| input.contains("price")   ||
-        input.contains("inventory"))
+        input.contains("inventory") || input.contains("discount") ||
+        input.contains("temperature") || input.contains("tempreture") ||
+        input.contains("hottest") || input.contains("coldest") ||
+        input.contains("hot") || input.contains("cold"))
         return queryStock(input);
 
     // ── Docks ────────────────────────────────────────────
@@ -353,6 +579,87 @@ QString ChatbotDialog::processQuery(const QString &input)
            "• \"summary\"";
 }
 
+QString ChatbotDialog::queryListTables()
+{
+    if (!QSqlDatabase::database().isOpen()) return "Database not connected.";
+    QStringList tables = QSqlDatabase::database().tables();
+    if (tables.isEmpty()) return "No tables found in the current connection.";
+    QString res = QString("Found %1 tables:\n").arg(tables.size());
+    int c = 0;
+    for (const QString &t : tables) {
+        res += QString("• %1\n").arg(t);
+        if (++c >= 40) { res += "...and more\n"; break; }
+    }
+    return res.trimmed();
+}
+
+QString ChatbotDialog::actualTable(const QString &baseName) const
+{
+    QSqlDatabase db = QSqlDatabase::database();
+    QStringList tables = db.tables();
+
+    // Exact match
+    for (const QString &t : tables) if (QString::compare(t, baseName, Qt::CaseInsensitive) == 0) return t;
+
+    // With SMARTFISH prefix
+    QString pref = QString("SMARTFISH.%1").arg(baseName);
+    for (const QString &t : tables) if (QString::compare(t, pref, Qt::CaseInsensitive) == 0) return t;
+
+    // Table names that end with .BASE
+    for (const QString &t : tables) {
+        if (t.endsWith("." + baseName, Qt::CaseInsensitive)) return t;
+    }
+
+    // not found, return baseName (best-effort)
+    return baseName;
+}
+
+QString ChatbotDialog::dumpTable(const QString &tableName, int limit)
+{
+    if (!QSqlDatabase::database().isOpen()) return "Database not connected.";
+
+    // Basic safety: allow only alnum, underscore, dot, and optionally schema qualifier
+    if (tableName.contains(QRegularExpression("[^A-Za-z0-9_\.:]")))
+        return "Invalid table name.";
+
+    // Resolve actual table name if user provided short name
+    QString resolved = tableName;
+    if (!tableName.contains('.')) resolved = actualTable(tableName);
+
+    QString qsql = QString("SELECT * FROM %1 FETCH FIRST %2 ROWS ONLY").arg(resolved).arg(limit);
+    QSqlQuery q;
+    if (!q.exec(qsql)) {
+        // Try MySQL-style LIMIT as a fallback
+        qsql = QString("SELECT * FROM %1 LIMIT %2").arg(tableName).arg(limit);
+        if (!q.exec(qsql)) {
+            return QString("Error querying %1: %2").arg(tableName, q.lastError().text());
+        }
+    }
+
+    // Build header
+    QStringList cols;
+    QSqlRecord r = q.record();
+    for (int i = 0; i < r.count(); ++i) cols << r.fieldName(i);
+
+    if (cols.isEmpty()) return QString("%1: no columns or empty table.").arg(tableName);
+
+    QString out = QString("%1 — columns: %2\n").arg(tableName).arg(cols.join(", "));
+    int rows = 0;
+    while (q.next() && rows < limit) {
+        QStringList vals;
+        for (int i = 0; i < r.count(); ++i) {
+            QVariant v = q.value(i);
+            QString vs = v.isNull() ? "(null)" : v.toString();
+            if (vs.length() > 80) vs = vs.left(77) + "...";
+            vals << vs;
+        }
+        out += QString("%1) %2\n").arg(rows + 1).arg(vals.join(" | "));
+        rows++;
+    }
+    if (rows == 0) out += "(no rows returned)";
+    return out.trimmed();
+}
+
 // ─────────────────────────────────────────────
 //  Summary — all tables at a glance
 // ─────────────────────────────────────────────
@@ -361,38 +668,46 @@ QString ChatbotDialog::querySummary()
     QString result = "📊 Harbor Summary\n";
     result += "─────────────────\n";
 
+
     QSqlQuery q;
 
+    // Resolve table names according to the connected DB
+    QString productsTable = actualTable("PRODUCTS");
+    QString dockingTable  = actualTable("DOCKING");
+    QString boatTable     = actualTable("BOAT");
+    QString usersTable    = actualTable("USERS");
+    QString companiesTable= actualTable("COMPANIES");
+
     // Products
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.PRODUCTS");
+    q.exec(QString("SELECT COUNT(*) FROM %1").arg(productsTable));
     int prodTotal = q.next() ? q.value(0).toInt() : 0;
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.PRODUCTS WHERE QUANTITY < 30");
+    q.exec(QString("SELECT COUNT(*) FROM %1 WHERE QUANTITY < 30").arg(productsTable));
     int prodLow = q.next() ? q.value(0).toInt() : 0;
     result += QString("🐟 Products: %1 total, %2 low stock\n").arg(prodTotal).arg(prodLow);
 
     // Docks
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.DOCKING");
+    q.exec(QString("SELECT COUNT(*) FROM %1").arg(dockingTable));
     int dockTotal = q.next() ? q.value(0).toInt() : 0;
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.DOCKING WHERE STATUS = 'Available'");
+    q.exec(QString("SELECT COUNT(*) FROM %1 WHERE STATUS = 'Available'").arg(dockingTable));
     int dockFree = q.next() ? q.value(0).toInt() : 0;
     result += QString("⚓ Docks: %1 total, %2 available\n").arg(dockTotal).arg(dockFree);
 
     // Boats
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.BOAT");
+    q.exec(QString("SELECT COUNT(*) FROM %1").arg(boatTable));
     int boatTotal = q.next() ? q.value(0).toInt() : 0;
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.BOAT WHERE STATUS = 0");
+    q.exec(QString("SELECT COUNT(*) FROM %1 WHERE STATUS = 0").arg(boatTable));
     int boatSea = q.next() ? q.value(0).toInt() : 0;
     result += QString("🚢 Boats: %1 total, %2 at sea\n").arg(boatTotal).arg(boatSea);
 
     // Users
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.USERS");
+    q.exec(QString("SELECT COUNT(*) FROM %1").arg(usersTable));
     int userTotal = q.next() ? q.value(0).toInt() : 0;
     result += QString("👤 Users: %1\n").arg(userTotal);
 
     // Companies
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.COMPANIES");
+    q.exec(QString("SELECT COUNT(*) FROM %1").arg(companiesTable));
     int compTotal = q.next() ? q.value(0).toInt() : 0;
-    q.exec("SELECT COUNT(*) FROM SMARTFISH.COMPANIES WHERE STATUS = 'ACTIVE'");
+    q.exec(QString("SELECT COUNT(*) FROM %1 WHERE STATUS = 'ACTIVE'").arg(companiesTable));
     int compActive = q.next() ? q.value(0).toInt() : 0;
     result += QString("🏢 Companies: %1 total, %2 active\n").arg(compTotal).arg(compActive);
 
@@ -405,17 +720,133 @@ QString ChatbotDialog::querySummary()
 QString ChatbotDialog::queryStock(const QString &input)
 {
     QSqlQuery q;
+    QString productsTable = actualTable("PRODUCTS");
+
+    const bool asksDiscount = input.contains("discount") || input.contains("reduction") ||
+                              input.contains("promo") || input.contains("sale");
+    const bool asksTemperature = input.contains("temperature") || input.contains("tempreture") ||
+                                 input.contains("hottest") || input.contains("coldest") ||
+                                 input.contains("hot") || input.contains("cold");
 
     // Count
     if (input.contains("how many") || input.contains("count") || input.contains("total")) {
-        q.exec("SELECT COUNT(*) FROM SMARTFISH.PRODUCTS");
+        q.exec(QString("SELECT COUNT(*) FROM %1").arg(productsTable));
         if (q.next())
             return QString("📦 %1 products in the system.").arg(q.value(0).toInt());
     }
 
+    // Discount insights (computed from DATEOFPURCHASE using same logic as product list)
+    if (asksDiscount) {
+        q.exec(QString("SELECT TYPE, PRICE, DATEOFPURCHASE FROM %1").arg(productsTable));
+        if (!q.next()) return "No discount data found.";
+
+        struct DiscountRow {
+            QString type;
+            double originalPrice;
+            double discountedPrice;
+            double discountPct;
+        };
+
+        QList<DiscountRow> rows;
+        do {
+            const QString type = q.value("TYPE").toString();
+            const double originalPrice = q.value("PRICE").toDouble();
+            const QString purchaseDate = q.value("DATEOFPURCHASE").toString();
+            const double discountedPrice = discountedPriceForChat(originalPrice, purchaseDate);
+            const double discountPct = (originalPrice > 0.0)
+                ? ((originalPrice - discountedPrice) / originalPrice) * 100.0
+                : 0.0;
+            rows.append({type, originalPrice, discountedPrice, discountPct});
+        } while (q.next());
+
+        std::sort(rows.begin(), rows.end(), [](const DiscountRow &a, const DiscountRow &b) {
+            return a.discountPct > b.discountPct;
+        });
+
+        if (input.contains("highest") || input.contains("higest") || input.contains("biggest") ||
+            input.contains("max") || input.contains("best")) {
+            const double maxPct = rows.first().discountPct;
+            if (maxPct <= 0.0) {
+                return "No discounted products right now.";
+            }
+
+            QString result = QString("🏷️ Highest discount: %1%%\n").arg(maxPct, 0, 'f', 0);
+            int shown = 0;
+            for (const DiscountRow &r : rows) {
+                if (std::fabs(r.discountPct - maxPct) > 0.01) break;
+                result += QString("• %1 | %2 → %3 TND\n")
+                              .arg(r.type)
+                              .arg(r.originalPrice, 0, 'f', 2)
+                              .arg(r.discountedPrice, 0, 'f', 2);
+                if (++shown >= 5) break;
+            }
+            return result.trimmed();
+        }
+
+        QString result = "🏷️ Products by discount:\n";
+        int shown = 0;
+        for (const DiscountRow &r : rows) {
+            result += QString("• %1 | %2%% off | %3 → %4 TND\n")
+                          .arg(r.type)
+                          .arg(r.discountPct, 0, 'f', 0)
+                          .arg(r.originalPrice, 0, 'f', 2)
+                          .arg(r.discountedPrice, 0, 'f', 2);
+            if (++shown >= 8) break;
+        }
+        return result.trimmed();
+    }
+
+    // Temperature insights
+    if (asksTemperature) {
+        q.exec(QString("SELECT TYPE, LOCATION, TEMPERATURE FROM %1 WHERE TEMPERATURE IS NOT NULL").arg(productsTable));
+        if (!q.next()) return "No product temperature data found.";
+
+        struct TempRow {
+            QString type;
+            QString location;
+            double temperature;
+        };
+
+        QList<TempRow> rows;
+        do {
+            rows.append({
+                q.value("TYPE").toString(),
+                q.value("LOCATION").toString(),
+                q.value("TEMPERATURE").toDouble()
+            });
+        } while (q.next());
+
+        const bool asksColdest = input.contains("coldest") || input.contains("lowest") || input.contains("minimum");
+        std::sort(rows.begin(), rows.end(), [asksColdest](const TempRow &a, const TempRow &b) {
+            return asksColdest ? (a.temperature < b.temperature) : (a.temperature > b.temperature);
+        });
+
+        if (input.contains("highest") || input.contains("hottest") || input.contains("max") ||
+            input.contains("coldest") || input.contains("lowest") || input.contains("minimum")) {
+            const TempRow &top = rows.first();
+            return QString("🌡️ %1 product: %2 at %3 (%4 °C).")
+                .arg(asksColdest ? "Coldest" : "Hottest")
+                .arg(top.type)
+                .arg(top.location)
+                .arg(top.temperature, 0, 'f', 2);
+        }
+
+        QString result = QString("🌡️ Products by %1 temperature:\n")
+                             .arg(asksColdest ? "lowest" : "highest");
+        int shown = 0;
+        for (const TempRow &r : rows) {
+            result += QString("• %1 | %2 | %3 °C\n")
+                          .arg(r.type)
+                          .arg(r.location)
+                          .arg(r.temperature, 0, 'f', 2);
+            if (++shown >= 8) break;
+        }
+        return result.trimmed();
+    }
+
     // Low stock
     if (input.contains("low") || input.contains("running out") || input.contains("shortage")) {
-        q.exec("SELECT TYPE, QUANTITY FROM SMARTFISH.PRODUCTS WHERE QUANTITY < 30 ORDER BY QUANTITY ASC");
+        q.exec(QString("SELECT TYPE, QUANTITY FROM %1 WHERE QUANTITY < 30 ORDER BY QUANTITY ASC").arg(productsTable));
         if (!q.next()) return "✅ All products have sufficient stock (above 30 units).";
         QString result = "⚠️ Low stock (< 30 units):\n";
         do {
@@ -428,7 +859,7 @@ QString ChatbotDialog::queryStock(const QString &input)
 
     // Price
     if (input.contains("price") || input.contains("cost") || input.contains("expensive")) {
-        q.exec("SELECT TYPE, PRICE FROM SMARTFISH.PRODUCTS ORDER BY PRICE DESC");
+        q.exec(QString("SELECT TYPE, PRICE FROM %1 ORDER BY PRICE DESC").arg(productsTable));
         if (!q.next()) return "No price data found.";
         QString result = "💰 Products by price:\n";
         int c = 0;
@@ -442,7 +873,7 @@ QString ChatbotDialog::queryStock(const QString &input)
 
     // Status breakdown
     if (input.contains("status") || input.contains("sold") || input.contains("available")) {
-        q.exec("SELECT STATUS, COUNT(*) AS CNT FROM SMARTFISH.PRODUCTS GROUP BY STATUS");
+        q.exec(QString("SELECT STATUS, COUNT(*) AS CNT FROM %1 GROUP BY STATUS").arg(productsTable));
         QString result = "📊 Products by status:\n";
         while (q.next())
             result += QString("• %1: %2\n")
@@ -452,7 +883,7 @@ QString ChatbotDialog::queryStock(const QString &input)
     }
 
     // Default — full list
-    q.exec("SELECT TYPE, STATUS, QUANTITY, PRICE FROM SMARTFISH.PRODUCTS ORDER BY PRODUCTID DESC");
+    q.exec(QString("SELECT TYPE, STATUS, QUANTITY, PRICE FROM %1 ORDER BY PRODUCTID DESC").arg(productsTable));
     if (!q.next()) return "No products found in the database.";
     QString result = "🐟 Products:\n";
     int count = 0;
@@ -474,26 +905,27 @@ QString ChatbotDialog::queryDocks(const QString &input)
 {
     QSqlQuery q;
 
+    QString dockingTable = actualTable("DOCKING");
     if (input.contains("available") || input.contains("free")) {
-        q.exec("SELECT COUNT(*) FROM SMARTFISH.DOCKING WHERE STATUS = 'Available'");
+        q.exec(QString("SELECT COUNT(*) FROM %1 WHERE STATUS = 'Available'").arg(dockingTable));
         if (q.next())
             return QString("✅ %1 dock(s) currently available.").arg(q.value(0).toInt());
     }
 
     if (input.contains("occupied") || input.contains("full") || input.contains("taken")) {
-        q.exec("SELECT COUNT(*) FROM SMARTFISH.DOCKING WHERE STATUS = 'Occupied'");
+        q.exec(QString("SELECT COUNT(*) FROM %1 WHERE STATUS = 'Occupied'").arg(dockingTable));
         if (q.next())
             return QString("🔴 %1 dock(s) currently occupied.").arg(q.value(0).toInt());
     }
 
     if (input.contains("how many") || input.contains("count") || input.contains("total")) {
-        q.exec("SELECT COUNT(*) FROM SMARTFISH.DOCKING");
+        q.exec(QString("SELECT COUNT(*) FROM %1").arg(dockingTable));
         if (q.next())
             return QString("⚓ %1 docks registered in total.").arg(q.value(0).toInt());
     }
 
     if (input.contains("capacity")) {
-        q.exec("SELECT DOCKID, LOCATION, CAPACITY, STATUS FROM SMARTFISH.DOCKING ORDER BY CAPACITY DESC");
+        q.exec(QString("SELECT DOCKID, LOCATION, CAPACITY, STATUS FROM %1 ORDER BY CAPACITY DESC").arg(dockingTable));
         if (!q.next()) return "No dock capacity data found.";
         QString result = "⚓ Dock capacities:\n";
         do {
@@ -507,7 +939,7 @@ QString ChatbotDialog::queryDocks(const QString &input)
     }
 
     // Default — full list
-    q.exec("SELECT DOCKID, LOCATION, STATUS, CAPACITY FROM SMARTFISH.DOCKING ORDER BY DOCKID");
+    q.exec(QString("SELECT DOCKID, LOCATION, STATUS, CAPACITY FROM %1 ORDER BY DOCKID").arg(dockingTable));
     if (!q.next()) return "No docking stations found in the database.";
     QString result = "⚓ Docking stations:\n";
     do {
@@ -527,8 +959,9 @@ QString ChatbotDialog::queryBoats(const QString &input)
 {
     QSqlQuery q;
 
+    QString boatTable = actualTable("BOAT");
     if (input.contains("sea") || input.contains("outside") || input.contains("sailing")) {
-        q.exec("SELECT BOATID, OWNERNAME, TYPE FROM SMARTFISH.BOAT WHERE STATUS = 0");
+        q.exec(QString("SELECT BOATID, OWNERNAME, TYPE FROM %1 WHERE STATUS = 0").arg(boatTable));
         if (!q.next()) return "🚢 No boats currently at sea.";
         QString result = "🌊 Boats at sea:\n";
         do {
@@ -541,7 +974,7 @@ QString ChatbotDialog::queryBoats(const QString &input)
     }
 
     if (input.contains("docked") || input.contains("inside") || input.contains("port")) {
-        q.exec("SELECT BOATID, OWNERNAME, TYPE FROM SMARTFISH.BOAT WHERE STATUS = 1");
+        q.exec(QString("SELECT BOATID, OWNERNAME, TYPE FROM %1 WHERE STATUS = 1").arg(boatTable));
         if (!q.next()) return "⚓ No boats currently docked.";
         QString result = "⚓ Boats in port:\n";
         do {
@@ -554,7 +987,7 @@ QString ChatbotDialog::queryBoats(const QString &input)
     }
 
     if (input.contains("maintenance") || input.contains("repair")) {
-        q.exec("SELECT OWNERNAME, TYPE, LASTMAINTENANCEDATE FROM SMARTFISH.BOAT ORDER BY LASTMAINTENANCEDATE ASC");
+        q.exec(QString("SELECT OWNERNAME, TYPE, LASTMAINTENANCEDATE FROM %1 ORDER BY LASTMAINTENANCEDATE ASC").arg(boatTable));
         if (!q.next()) return "No maintenance records found.";
         QString result = "🔧 Boats by last maintenance (oldest first):\n";
         int c = 0;
@@ -568,7 +1001,7 @@ QString ChatbotDialog::queryBoats(const QString &input)
     }
 
     if (input.contains("trip") || input.contains("fish caught")) {
-        q.exec("SELECT OWNERNAME, TOTALTRIPS, TOTALFISH FROM SMARTFISH.BOAT ORDER BY TOTALFISH DESC");
+        q.exec(QString("SELECT OWNERNAME, TOTALTRIPS, TOTALFISH FROM %1 ORDER BY TOTALFISH DESC").arg(boatTable));
         if (!q.next()) return "No trip data found.";
         QString result = "📈 Boat performance:\n";
         do {
@@ -580,23 +1013,60 @@ QString ChatbotDialog::queryBoats(const QString &input)
         return result.trimmed();
     }
 
+    if (input.contains("location") || input.contains("where")) {
+        const QRegularExpression idPattern(R"((?:boat|vessel|ship)\s*#?\s*(\d+))");
+        const QRegularExpressionMatch idMatch = idPattern.match(input);
+
+        if (idMatch.hasMatch()) {
+            const int boatId = idMatch.captured(1).toInt();
+            q.prepare(QString("SELECT BOATID, OWNERNAME, LOCATION, STATUS FROM %1 WHERE BOATID = :id").arg(boatTable));
+            q.bindValue(":id", boatId);
+            if (!q.exec() || !q.next())
+                return QString("I couldn't find boat #%1.").arg(boatId);
+
+            const QString locationName = resolveLocationName(q.value("LOCATION").toString());
+            const QString st = q.value("STATUS").toInt() == 1 ? "In Port" : "At Sea";
+            return QString("📍 Boat #%1 (%2) is currently %3 near %4.")
+                .arg(q.value("BOATID").toInt())
+                .arg(q.value("OWNERNAME").toString())
+                .arg(st)
+                .arg(locationName);
+        }
+
+        q.exec(QString("SELECT BOATID, OWNERNAME, LOCATION, STATUS FROM %1 ORDER BY BOATID").arg(boatTable));
+        if (!q.next()) return "No boats found in the database.";
+        QString result = "📍 Boat locations:\n";
+        do {
+            const QString locationName = resolveLocationName(q.value("LOCATION").toString());
+            const QString st = q.value("STATUS").toInt() == 1 ? "In Port" : "At Sea";
+            result += QString("• #%1 | %2 | %3 | %4\n")
+                          .arg(q.value("BOATID").toInt())
+                          .arg(q.value("OWNERNAME").toString())
+                          .arg(st)
+                          .arg(locationName);
+        } while (q.next());
+        return result.trimmed();
+    }
+
     if (input.contains("how many") || input.contains("count") || input.contains("total")) {
-        q.exec("SELECT COUNT(*) FROM SMARTFISH.BOAT");
+        q.exec(QString("SELECT COUNT(*) FROM %1").arg(boatTable));
         if (q.next())
             return QString("🚢 %1 boats registered.").arg(q.value(0).toInt());
     }
 
     // Default — full list
-    q.exec("SELECT BOATID, OWNERNAME, SIZEBOAT, STATUS, TYPE, TOTALTRIPS, TOTALFISH FROM SMARTFISH.BOAT ORDER BY BOATID");
+    q.exec(QString("SELECT BOATID, OWNERNAME, SIZEBOAT, LOCATION, STATUS, TYPE, TOTALTRIPS, TOTALFISH FROM %1 ORDER BY BOATID").arg(boatTable));
     if (!q.next()) return "No boats found in the database.";
     QString result = "🚢 All boats:\n";
     do {
         QString st = q.value("STATUS").toInt() == 1 ? "In Port" : "At Sea";
-        result += QString("• #%1 | %2 | %3 | %4 | Trips:%5 | Fish:%6\n")
+        const QString locationName = resolveLocationName(q.value("LOCATION").toString());
+        result += QString("• #%1 | %2 | %3 | %4 | %5 | Trips:%6 | Fish:%7\n")
                       .arg(q.value("BOATID").toInt())
                       .arg(q.value("OWNERNAME").toString())
                       .arg(q.value("TYPE").toString())
                       .arg(st)
+                      .arg(locationName)
                       .arg(q.value("TOTALTRIPS").toInt())
                       .arg(q.value("TOTALFISH").toInt());
     } while (q.next());
@@ -610,15 +1080,16 @@ QString ChatbotDialog::queryUsers(const QString &input)
 {
     QSqlQuery q;
 
+    QString usersTable = actualTable("USERS");
     if (input.contains("how many") || input.contains("count") || input.contains("total")) {
-        q.exec("SELECT COUNT(*) FROM SMARTFISH.USERS");
+        q.exec(QString("SELECT COUNT(*) FROM %1").arg(usersTable));
         if (q.next())
             return QString("👤 %1 users in the system.").arg(q.value(0).toInt());
     }
 
     if (input.contains("role") || input.contains("admin") ||
         input.contains("manager") || input.contains("employee")) {
-        q.exec("SELECT ROLE, COUNT(*) AS CNT FROM SMARTFISH.USERS GROUP BY ROLE ORDER BY CNT DESC");
+        q.exec(QString("SELECT ROLE, COUNT(*) AS CNT FROM %1 GROUP BY ROLE ORDER BY CNT DESC").arg(usersTable));
         QString result = "👥 Users by role:\n";
         while (q.next())
             result += QString("• %1: %2\n")
@@ -628,7 +1099,7 @@ QString ChatbotDialog::queryUsers(const QString &input)
     }
 
     if (input.contains("salary")) {
-        q.exec("SELECT FIRST_NAME, LAST_NAME, SALARY FROM SMARTFISH.USERS ORDER BY SALARY DESC");
+        q.exec(QString("SELECT FIRST_NAME, LAST_NAME, SALARY FROM %1 ORDER BY SALARY DESC").arg(usersTable));
         if (!q.next()) return "No salary data found.";
         QString result = "💰 Salaries:\n";
         do {
@@ -641,8 +1112,14 @@ QString ChatbotDialog::queryUsers(const QString &input)
     }
 
     // Default — full list
-    q.exec("SELECT USERID, FIRST_NAME, LAST_NAME, ROLE, EMAIL FROM SMARTFISH.USERS ORDER BY USERID");
-    if (!q.next()) return "No users found in the database.";
+    q.exec(QString("SELECT USERID, FIRST_NAME, LAST_NAME, ROLE, EMAIL FROM %1 ORDER BY USERID").arg(usersTable));
+    if (!q.next()) {
+        if (!m_currentUserRole.trimmed().isEmpty()) {
+            return QString("I can see your session as %1 user #%2, but the users table returned no rows.")
+                .arg(m_currentUserRole, QString::number(m_currentUserId));
+        }
+        return "No users found in the database.";
+    }
     QString result = "👤 Users:\n";
     do {
         result += QString("• #%1 | %2 %3 | %4 | %5\n")
@@ -662,8 +1139,9 @@ QString ChatbotDialog::queryCompanies(const QString &input)
 {
     QSqlQuery q;
 
+    QString companiesTable = actualTable("COMPANIES");
     if (input.contains("active") && !input.contains("inactive")) {
-        q.exec("SELECT NAME, LOCATION, PREFERRED_FISH FROM SMARTFISH.COMPANIES WHERE STATUS = 'ACTIVE'");
+        q.exec(QString("SELECT NAME, LOCATION, PREFERRED_FISH FROM %1 WHERE STATUS = 'ACTIVE'").arg(companiesTable));
         if (!q.next()) return "No active companies found.";
         QString result = "✅ Active companies:\n";
         do {
@@ -676,7 +1154,7 @@ QString ChatbotDialog::queryCompanies(const QString &input)
     }
 
     if (input.contains("inactive")) {
-        q.exec("SELECT NAME, EMAIL, LOCATION FROM SMARTFISH.COMPANIES WHERE STATUS = 'INACTIVE'");
+        q.exec(QString("SELECT NAME, EMAIL, LOCATION FROM %1 WHERE STATUS = 'INACTIVE'").arg(companiesTable));
         if (!q.next()) return "✅ No inactive companies — all partners are active!";
         QString result = "🔴 Inactive companies:\n";
         do {
@@ -689,14 +1167,14 @@ QString ChatbotDialog::queryCompanies(const QString &input)
     }
 
     if (input.contains("how many") || input.contains("count") || input.contains("total")) {
-        q.exec("SELECT COUNT(*) FROM SMARTFISH.COMPANIES");
+        q.exec(QString("SELECT COUNT(*) FROM %1").arg(companiesTable));
         if (q.next())
             return QString("🏢 %1 companies registered.").arg(q.value(0).toInt());
     }
 
     if (input.contains("fish") || input.contains("prefer") || input.contains("tuna") ||
         input.contains("sardine")) {
-        q.exec("SELECT PREFERRED_FISH, COUNT(*) AS CNT FROM SMARTFISH.COMPANIES GROUP BY PREFERRED_FISH ORDER BY CNT DESC");
+        q.exec(QString("SELECT PREFERRED_FISH, COUNT(*) AS CNT FROM %1 GROUP BY PREFERRED_FISH ORDER BY CNT DESC").arg(companiesTable));
         QString result = "🐟 Companies by preferred fish:\n";
         while (q.next())
             result += QString("• %1: %2 compan%3\n")
@@ -707,7 +1185,7 @@ QString ChatbotDialog::queryCompanies(const QString &input)
     }
 
     // Default — full list
-    q.exec("SELECT NAME, LOCATION, PREFERRED_FISH, STATUS FROM SMARTFISH.COMPANIES ORDER BY COMPANY_ID");
+    q.exec(QString("SELECT NAME, LOCATION, PREFERRED_FISH, STATUS FROM %1 ORDER BY COMPANY_ID").arg(companiesTable));
     if (!q.next()) return "No companies found in the database.";
     QString result = "🏢 Companies:\n";
     do {

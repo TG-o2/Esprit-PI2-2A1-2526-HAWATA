@@ -551,7 +551,7 @@ appwindow::appwindow(QWidget *parent, int currentUserId, const QString &currentU
     QPixmap fish("icons/fishicon.png");
     QPixmap pic_2("icons/logoQT2.png");
     QPixmap smallshrimp("icons/shrimp.png");
-    QPixmap homepage("icons/Ports1.jpg");
+    QPixmap homepage("icons/homepage.png");
     QPixmap waves("icons/wave.jpg");
     //product picture set up
     ui->pic->setPixmap(fish);
@@ -790,15 +790,20 @@ appwindow::appwindow(QWidget *parent, int currentUserId, const QString &currentU
 
 
 
-    ui->homeImage->setPixmap(logo);
+    if (homepage.isNull()) {
+        qDebug() << "icons/homepage.png not found, falling back to icons/Ports1.jpg";
+        homepage = QPixmap("icons/Ports1.jpg");
+    }
+
+    ui->homeImage->setPixmap(homepage);
     ui->homeImage->setScaledContents(true);
     if (smallshrimp.isNull()) {
         qDebug() << "Image failed to load!";
     } else {
         qDebug() << "Image loaded successfully!";
 
-        ui->small->setPixmap(smallshrimp);
-        ui->small->setScaledContents(true);
+        ui->image1->setPixmap(smallshrimp);
+        ui->image1->setScaledContents(true);
     }
 
     //ui->waveDecoration->setPixmap(waves);
@@ -1246,7 +1251,7 @@ appwindow::appwindow(QWidget *parent, int currentUserId, const QString &currentU
     // ── Harbor Assistant chatbot ──
     ui->chatFAB->raise();  // always on top of all tabs
 
-    m_chatbot = new ChatbotDialog(this);
+    m_chatbot = new ChatbotDialog(this, connectedUserId, connectedUserRole);
 
     connect(ui->chatFAB, &QPushButton::clicked, this, [this]() {
         if (m_chatbot->isVisible()) {
@@ -7289,24 +7294,43 @@ void appwindow::update_label()
                 }
 
                 // ──────────────────────────────────────────────────────
-                // Temperature control logic: Compare with threshold
-                // If temp > 30°C → Fan ON (send HIGH command to relay)
-                // If temp <= 30°C → Fan OFF (send LOW command to relay)
+                // Temperature control logic: compare the latest stored
+                // database temperature against the threshold.
                 // ──────────────────────────────────────────────────────
-                
+
+                double dbTemperature = v;
+                if (db.isOpen()) {
+                    QSqlQuery latestQ(db);
+                    if (latestQ.exec(
+                            "SELECT TEMPERATURE "
+                            "FROM TEMPERATURE_READINGS "
+                            "ORDER BY READING_TIME DESC, ID DESC "
+                            "FETCH FIRST 1 ROWS ONLY")) {
+                        if (latestQ.next()) {
+                            const QVariant latestValue = latestQ.value(0);
+                            bool latestOk = false;
+                            const double latestTemp = latestValue.toDouble(&latestOk);
+                            if (latestOk) {
+                                dbTemperature = latestTemp;
+                                qDebug() << "Latest DB temperature:" << dbTemperature;
+                            }
+                        }
+                    } else {
+                        qDebug() << "Failed to read latest DB temperature:" << latestQ.lastError().text();
+                    }
+                }
+
                 QString fanCommand;
                 QString fanStatus;
-                
-                if (v > TEMP_THRESHOLD) {
-                    // Temperature exceeds threshold - turn fan ON
+
+                if (dbTemperature > TEMP_THRESHOLD) {
                     fanCommand = "FAN_ON\n";
                     fanStatus = "ON";
-                    qDebug() << QString("Temperature %1°C > %2°C threshold - FAN ON").arg(v, 0, 'f', 2).arg(TEMP_THRESHOLD, 0, 'f', 1);
+                    qDebug() << QString("Database temperature %1°C > %2°C threshold - FAN ON").arg(dbTemperature, 0, 'f', 2).arg(TEMP_THRESHOLD, 0, 'f', 1);
                 } else {
-                    // Temperature is safe - turn fan OFF
                     fanCommand = "FAN_OFF\n";
                     fanStatus = "OFF";
-                    qDebug() << QString("Temperature %1°C <= %2°C threshold - FAN OFF").arg(v, 0, 'f', 2).arg(TEMP_THRESHOLD, 0, 'f', 1);
+                    qDebug() << QString("Database temperature %1°C <= %2°C threshold - FAN OFF").arg(dbTemperature, 0, 'f', 2).arg(TEMP_THRESHOLD, 0, 'f', 1);
                 }
                 
                 // Send fan control command to Arduino
@@ -7317,7 +7341,7 @@ void appwindow::update_label()
                 
                 // Update UI to show fan status
                 ui->tempSourceLabel->setText(
-                    QString("Arduino: %1 C | Fan: %2").arg(v, 0, 'f', 2).arg(fanStatus));
+                    QString("Arduino: %1 C | DB: %2 C | Fan: %3").arg(v, 0, 'f', 2).arg(dbTemperature, 0, 'f', 2).arg(fanStatus));
             }
         } else {
             // Log lines that don't match temperature pattern (for debugging)

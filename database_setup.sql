@@ -1,0 +1,150 @@
+-- =====================================================
+-- HAWATA PORT MANAGEMENT SYSTEM - DATABASE SETUP
+-- Run this as HWT user in Oracle SQL Developer
+-- =====================================================
+
+-- Drop existing tables (if they exist)
+BEGIN
+    EXECUTE IMMEDIATE 'DROP TABLE MANAGE CASCADE CONSTRAINTS';
+    EXECUTE IMMEDIATE 'DROP TABLE PRODUCTS CASCADE CONSTRAINTS';
+    EXECUTE IMMEDIATE 'DROP TABLE BOAT CASCADE CONSTRAINTS';
+    EXECUTE IMMEDIATE 'DROP TABLE DOCKING CASCADE CONSTRAINTS';
+    EXECUTE IMMEDIATE 'DROP TABLE COMPANIES CASCADE CONSTRAINTS';
+    EXECUTE IMMEDIATE 'DROP TABLE USERS CASCADE CONSTRAINTS';
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_USERID';
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_DOCKID';
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_BOATID';
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_PRODUCTID';
+    EXECUTE IMMEDIATE 'DROP SEQUENCE SEQ_COMPANY_ID';
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END;
+/
+
+-- =====================================================
+-- CREATE SEQUENCES (for auto-increment IDs)
+-- =====================================================
+CREATE SEQUENCE SEQ_USERID START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE SEQ_DOCKID START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE SEQ_BOATID START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE SEQ_PRODUCTID START WITH 1 INCREMENT BY 1;
+CREATE SEQUENCE SEQ_COMPANY_ID START WITH 1 INCREMENT BY 1;
+
+-- =====================================================
+-- CREATE USERS TABLE
+-- =====================================================
+CREATE TABLE USERS (
+    USERID NUMBER PRIMARY KEY,
+    EMAIL VARCHAR2(100) UNIQUE NOT NULL,
+    FIRST_NAME VARCHAR2(50) NOT NULL,
+    LAST_NAME VARCHAR2(50) NOT NULL,
+    PASSWORD VARCHAR2(100) NOT NULL,
+    ROLE VARCHAR2(20) NOT NULL,
+    GENDER CHAR(1),
+    SALARY NUMBER(10,2),
+    SHIFT_START DATE,
+    SHIFT_END DATE,
+    SUPERVISORID NUMBER,
+    CARDID VARCHAR2(50)
+);
+
+-- =====================================================
+-- CREATE DOCKING TABLE
+-- =====================================================
+CREATE TABLE DOCKING (
+    DOCKID NUMBER PRIMARY KEY,
+    LOCATION VARCHAR2(100) NOT NULL,
+    LENGTH VARCHAR2(20),
+    HEIGHT VARCHAR2(20),
+    STATUS VARCHAR2(20) DEFAULT 'Available',
+    CAPACITY VARCHAR2(20),
+    STARTDATE DATE,
+    ENDDATE DATE
+);
+
+-- =====================================================
+-- CREATE BOAT TABLE
+-- =====================================================
+CREATE TABLE BOAT (
+    BOATID NUMBER PRIMARY KEY,
+    SIZEBOAT VARCHAR2(50),
+    LOCATION VARCHAR2(100),
+    OWNERNAME VARCHAR2(100) NOT NULL,
+    OWNERMAIL VARCHAR2(100),
+    STATUS NUMBER(1) DEFAULT 1,
+    TYPE VARCHAR2(50),
+    LASTMAINTENANCEDATE DATE,
+    TOTALTRIPS NUMBER DEFAULT 0,
+    TOTALFISH NUMBER DEFAULT 0,
+    DOCKID NUMBER REFERENCES DOCKING(DOCKID)
+);
+
+-- =====================================================
+-- CREATE PRODUCTS TABLE
+-- =====================================================
+CREATE TABLE PRODUCTS (
+    PRODUCTID NUMBER PRIMARY KEY,
+    TYPE VARCHAR2(50) NOT NULL,
+    LOCATION VARCHAR2(100),
+    STATUS VARCHAR2(20) DEFAULT 'Available',
+    QUANTITY NUMBER DEFAULT 0,
+    PRICE NUMBER(10,2),
+    TEMPERATURE NUMBER(5,2),
+    FISH_CAUGHT DATE,
+    DATEOFPURCHASE DATE,
+    BOATID NUMBER REFERENCES BOAT(BOATID)
+);
+
+-- =====================================================
+-- CREATE COMPANIES TABLE
+-- =====================================================
+CREATE TABLE COMPANIES (
+    COMPANY_ID NUMBER PRIMARY KEY,
+    NAME VARCHAR2(100) NOT NULL,
+    LOCATION VARCHAR2(100),
+    EMAIL VARCHAR2(100),
+    PHONE VARCHAR2(20),
+    PREFERRED_FISH VARCHAR2(50),
+    STATUS VARCHAR2(10) DEFAULT 'ACTIVE'
+);
+
+-- =====================================================
+-- CREATE MANAGE TABLE (junction for users and docks)
+-- =====================================================
+CREATE TABLE MANAGE (
+    USERID NUMBER REFERENCES USERS(USERID),
+    DOCKID NUMBER REFERENCES DOCKING(DOCKID),
+    PRIMARY KEY (USERID, DOCKID)
+);
+
+-- =====================================================
+-- INSERT TEST DATA
+-- =====================================================
+
+-- Test User (password: admin123)
+INSERT INTO USERS (USERID, EMAIL, FIRST_NAME, LAST_NAME, PASSWORD, ROLE) 
+VALUES (SEQ_USERID.NEXTVAL, 'admin@hawata.com', 'Admin', 'User', 'admin123', 'ADMIN');
+
+-- Test Dock
+INSERT INTO DOCKING (DOCKID, LOCATION, STATUS, CAPACITY) 
+VALUES (SEQ_DOCKID.NEXTVAL, 'La Goulette', 'Available', '10');
+
+-- Test Boat
+INSERT INTO BOAT (BOATID, OWNERNAME, STATUS, TYPE, TOTALTRIPS, TOTALFISH) 
+VALUES (SEQ_BOATID.NEXTVAL, 'Ali Ben Ali', 1, 'Fishing Boat', 0, 0);
+
+-- Test Product
+INSERT INTO PRODUCTS (PRODUCTID, TYPE, STATUS, QUANTITY, PRICE) 
+VALUES (SEQ_PRODUCTID.NEXTVAL, 'Tuna', 'Available', 100, 25.50);
+
+-- Test Company
+INSERT INTO COMPANIES (COMPANY_ID, NAME, LOCATION, STATUS) 
+VALUES (SEQ_COMPANY_ID.NEXTVAL, 'Tunis Fish Market', 'Tunis', 'ACTIVE');
+
+-- =====================================================
+-- COMMIT CHANGES
+-- =====================================================
+COMMIT;
+
+-- Verify tables were created
+SELECT table_name FROM user_tables ORDER BY table_name;

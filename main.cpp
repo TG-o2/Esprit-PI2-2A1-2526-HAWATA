@@ -18,9 +18,9 @@ int main(int argc, char *argv[])
 
     int fontId = QFontDatabase::addApplicationFont(":/fonts/Hey Comic.otf");
     int fontId3 = QFontDatabase::addApplicationFont(":/fonts/Bion-BoldCond.otf");
-    int fontId4 = QFontDatabase::addApplicationFont("C:/Users/SKYMIL_INFORMATIQUE/OneDrive - ESPRIT/Documents/Qt project/Sign_up/Hawata/fonts/Poppins-SemiBold.ttf");
-    int fontId5 = QFontDatabase::addApplicationFont("C:/Users/SKYMIL_INFORMATIQUE/OneDrive - ESPRIT/Documents/Qt project/Sign_up/Hawata/fonts/TANTWINKLE.ttf");
-    int fontId6 = QFontDatabase::addApplicationFont("C:/Users/SKYMIL_INFORMATIQUE/OneDrive - ESPRIT/Documents/Qt project/Sign_up/Hawata/fonts/Mileast.otf");
+    int fontId4 = QFontDatabase::addApplicationFont(":/fonts/Poppins-SemiBold.ttf");
+    int fontId5 = QFontDatabase::addApplicationFont(":/fonts/TANTWINKLE.ttf");
+    int fontId6 = QFontDatabase::addApplicationFont(":/fonts/Mileast.otf");
     int fontId2 = QFontDatabase::addApplicationFont(":/fonts/Behove.ttf");
     if (fontId == -1) {
         qDebug() << "Font failed to load";

@@ -69,7 +69,7 @@ cmake --build . --config Release
 Step 7: Login
 Email: admin@hawata.com
 
-Password: admin123  ##This password is just an example and will be used throughout the document
+Password: your_password  ##This password is just an example and will be used throughout the document
                     ##for security reasons, please create a different password
 
 Quick Start

@@ -74,17 +74,14 @@ Password: admin123
 
 
 ## Quick Start
-Follow one of the quick start paths depending on whether you want to run the native Qt app or the Node demo server.
-
-Native (Qt/C++):
 
 ```bash
-# Build and run (recommended)
+# Build and run the application
 mkdir build && cd build
-cmake ..
+cmake .. -G "MinGW Makefiles"
 cmake --build . --config Release
-./Hawata   # or .\build\Release\Hawata.exe on Windows
-```
+.\Release\Sign_up.exe   # Windows
+# or ./Hawata on Mac/Linux
 
 Node demo (if present):
 

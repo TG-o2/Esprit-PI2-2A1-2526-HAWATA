@@ -19,6 +19,16 @@ Database: Oracle (QOCI via Qt) with QODBC fallback; SQL scripts provided for sch
 - CMake 3.16+ and a C++17-compatible compiler (MSVC / MinGW / clang)
 
 ## Installation
+### Step 0: Extract the Project Files
+
+1. Locate the downloaded zip file (e.g., `Hawata.zip`)
+2. Right-click the zip file
+3. Select **Extract All...**
+4. Choose a destination folder (e.g., `C:\Users\YourName\Desktop\Hawata`)
+5. Click **Extract**
+6. Open the extracted folder
+
+> ⚠️ **IMPORTANT:** Do NOT run commands from inside the zip file. You must extract first!
 ### Step 1: Install Oracle Database
 ### Step 2: Install Oracle Instant Client
 ### Step 3: Install Qt and CMake

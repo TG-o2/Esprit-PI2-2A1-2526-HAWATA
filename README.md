@@ -18,9 +18,9 @@ Database: Oracle (QOCI via Qt) with QODBC fallback; SQL scripts provided for sch
 - Oracle Instant Client (or an appropriate ODBC driver installed)
 - CMake 3.16+ and a C++17-compatible compiler (MSVC / MinGW / clang)
 
-## Installation
-### Step 0: Extract the Project Files
+## Installation Guide
 
+### Step 0: Extract the Project Files
 1. Locate the downloaded zip file (e.g., `Hawata.zip`)
 2. Right-click the zip file
 3. Select **Extract All...**
@@ -29,10 +29,10 @@ Database: Oracle (QOCI via Qt) with QODBC fallback; SQL scripts provided for sch
 6. Open the extracted folder
 
 > ⚠️ **IMPORTANT:** Do NOT run commands from inside the zip file. You must extract first!
+
 ### Step 1: Install Oracle Database
 ### Step 2: Install Oracle Instant Client
 ### Step 3: Install Qt and CMake
-
 ### Step 4: Set Up the Database
 ```bash
 # Connect to Oracle as SYSTEM and create HWT user
@@ -48,7 +48,6 @@ EXIT;
 sqlplus hwt/your_password
 @database_setup.sql
 EXIT;
-
 Step 5: Configure Database Connection
 Open connection.cpp and change these lines:
 
@@ -56,58 +55,41 @@ cpp
 db.setDatabaseName("XE");
 db.setUserName("HWT");
 db.setPassword("your_password");
-
 Step 6: Build and Run
 bash
-# From repository root
+# Navigate to the extracted project folder
+cd C:\Users\YourName\Desktop\Hawata
+
+# Create build folder and build
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles"
 cmake --build . --config Release
 .\Release\Sign_up.exe   # Windows
 # or ./Hawata on Mac/Linux
-
 Step 7: Login
 Email: admin@hawata.com
 
 Password: admin123
 
-
-
-## Quick Start
-
-```bash
+Quick Start
+bash
 # Build and run the application
 mkdir build && cd build
 cmake .. -G "MinGW Makefiles"
 cmake --build . --config Release
 .\Release\Sign_up.exe   # Windows
-# or ./Hawata on Mac/Linux
-
-Node demo (if present):
-
-```bash
-npm install
-npm start
-# open http://localhost:3000 or the port shown by the demo server
-```
-
-## Launch
-Run the built executable from the build output. Examples:
-
-Unix/macOS:
-```bash
-./Hawata
-```
+Launch
+Run the built executable from the build output:
 
 Windows (from build\Release or run via Qt Creator):
-```powershell
-.\build\Release\Hawata.exe
-```
 
-If a Node demo server is present, start it with:
-```bash
-npm start
-```
+powershell
+.\build\Release\Sign_up.exe
+Unix/macOS:
+
+bash
+./Hawata
+
 
 ## Environment Variables
 See `.env.example` for a machine-readable template. Common variables used by the application:

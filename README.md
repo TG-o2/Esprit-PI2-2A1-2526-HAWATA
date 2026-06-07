@@ -154,5 +154,4 @@ Before submitting, make sure the repo does not include secrets (passwords, API k
 
 For developer notes, database schema and per-feature documentation see: `PRODUCT_CRUD_SETUP.md`, `database_schema.sql`, and additional docs in the repository.
 
-@database_setup.sql
-EXIT;
+

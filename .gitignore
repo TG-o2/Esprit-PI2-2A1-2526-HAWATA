@@ -43,6 +43,8 @@ obj/
 *.so
 *.dll
 *.exe
+*.user
+
 
 # --- Other temporary or user-specific files ---
 Testing/Temporary/

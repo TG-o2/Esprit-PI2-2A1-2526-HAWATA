@@ -73,14 +73,17 @@ Password: admin123  ##This password is just an example and will be used througho
                     ##for security reasons, please create a different password
 
 Quick Start
-bash
-# Build and run the application
-mkdir build && cd build #or mkdir build on one line and cd build on a different line
-cmake .. -G "MinGW Makefiles"
-cmake --build . --config Release
-.\Release\Sign_up.exe   # Windows
-Launch
-Run the built executable from the build output:
+Open Qt Creator
+Navigate to home -> Open File or Project
+Navigate through Hawata-main -> CMakeLists.txt from the project folder then select enter
+if you run into an error simply click "ok"
+select "configure project"
+test the project by running it
+
+if it loads without images: 
+1. close Qt and reload the files in Hawata-main 
+2. move the icons folder into the build directory
+3. re-open the file in Qt creator and re-run
 
 Windows (from build\Release or run via Qt Creator):
 

@@ -128,13 +128,17 @@ See `.env.example` for a machine-readable template. Common variables used by the
 Note: The application tries an ODBC DSN named by `HWT_DB_DSN` if QOCI is not available. On Windows, ensure that the correct (32/64-bit) ODBC driver and DSN exist for the Qt runtime you use.
 
 ## Demo
-Video: https://...
+Video: https:[//...](https://youtu.be/V0Z_-v9EziU)
 
-Deployment: https://...
+Deployment:not applicable
 
 ## Authors
-Name --- Class --- Year --- Supervisor: ...
-
+Chaima Khayati ---2A1 --- Year 2 --- Supervisor: Saoussen Lakhdhar
+Ahmed Ben Khelifa ---2A1 --- Year 2 --- Supervisor: Saoussen Lakhdhar
+Fatma ezaahra joobeur ---2A1 --- Year 2 --- Supervisor: Saoussen Lakhdhar
+Tasnim Guesmi ---2A1 --- Year 2 --- Supervisor: Saoussen Lakhdhar
+Tasnim Guesmi ---2A1 --- Year 2 --- Supervisor: Saoussen Lakhdhar
+Jeridi Jihene ---2A1 --- Year 2 --- Supervisor:Saoussen Lakhdhar
 ## CONTRIBUTING
 
 Contributions are welcome. To contribute:

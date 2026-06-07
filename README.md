@@ -75,7 +75,7 @@ Password: admin123  ##This password is just an example and will be used througho
 Quick Start
 bash
 # Build and run the application
-mkdir build && cd build
+mkdir build && cd build #or mkdir build on one line and cd build on a different line
 cmake .. -G "MinGW Makefiles"
 cmake --build . --config Release
 .\Release\Sign_up.exe   # Windows

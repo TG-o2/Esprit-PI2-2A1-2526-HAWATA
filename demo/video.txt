@@ -1,2 +1,4 @@
 the below link is for the demo video:
-  https://drive.google.com/file/d/1y_cBOrkX_NmhbZ2cUvO_qXTAnZ-gfjpw/view?usp=sharing
+ application use: https://drive.google.com/file/d/1y_cBOrkX_NmhbZ2cUvO_qXTAnZ-gfjpw/view?usp=sharing
+ location tracking: https://drive.google.com/file/d/1kj7cO5THGDnpBf2I88Ufluj4uQtlvShp/view?usp=sharing
+ Temperature sensor and actuator: https://drive.google.com/file/d/18QlNRINAnt7CU9QTixHaqd4qTNTqsVwi/view?usp=sharing
